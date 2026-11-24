@@ -2,7 +2,7 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
   "installCommand": "pnpm install",
-  "buildCommand": "pnpm --filter @atlas/shared build && pnpm --filter @atlas/api build && pnpm --filter @atlas/web build && node -e \"const fs=require('fs');fs.rmSync('dist',{recursive:true,force:true});fs.cpSync('apps/web/dist','dist',{recursive:true})\"",
+  "buildCommand": "pnpm --filter @atlas/shared build && pnpm --filter @atlas/api build && pnpm --filter @atlas/web build && node -e \"const fs=require('fs');if(fs.existsSync('apps/web/dist')){fs.rmSync('dist',{recursive:true,force:true});fs.cpSync('apps/web/dist','dist',{recursive:true})}\"",
   "outputDirectory": "dist",
   "functions": {
     "api/index.ts": {
