@@ -1,44 +1,119 @@
 # Atlas Infra
 
-An open-source, interactive atlas of real-world infrastructure architectures.
+An interactive, full-stack atlas of real-world infrastructure architectures.
 
-Not a generic drawing tool. A gallery of explained, layered, clickable reference
-architectures: what a production Kubernetes cluster looks like, how a network is
-split into subnets, why PgBouncer sits in front of PostgreSQL, what the request
-path from a browser to a pod actually is.
+Explore layered reference topologies, step through architectural evolution from 1k to 10M users, trace request paths hop-by-hop, author diagrams visually or in live-validated YAML, and collaborate across personal and company workspaces.
 
-## Status
+## Monorepo Architecture
 
-Early but usable:
+```
+atlas-infra/
+├── apps/
+│   ├── web/              # Vite + React + TypeScript (@xyflow/react, elkjs, zustand)
+│   └── api/              # NestJS + Kysely + PostgreSQL backend (Auth, RBAC, CRUD)
+├── packages/
+│   └── shared/           # DSL types, Zod schemas, parser/validator, stage engine,
+│                         # reference architectures, access-control policy & DTOs
+├── docker-compose.yml    # Local PostgreSQL 16 service
+└── pnpm-workspace.yaml
+```
 
-- Gallery of reference architectures with layer toggles and component cards.
-- Stage slider: watch one product grow from a single server to a multi-AZ
-  Kubernetes platform, with what changed and why at each step.
-- Step-by-step request tracing.
-- Build your own: drag components from the palette, drop them into boxes,
-  connect them, and edit details in the inspector. Everything is also plain
-  YAML with live validation, autocomplete and share links.
-  Open any gallery entry with "Edit a copy" or start from the template.
+## Prerequisites
 
-Next: AI assistant (text to architecture, questions about a diagram).
+- **Node.js** `>= 22`
+- **pnpm** `>= 10`
+- **PostgreSQL 16+** (via Docker Compose or local PostgreSQL installation)
+- **Google Cloud OAuth 2.0 credentials** (for Google sign-in; guest exploration & local draft editing work even without Google OAuth configured)
 
-## Run
+## Quick Start
+
+### 1. Install Dependencies
 
 ```bash
 pnpm install
-pnpm dev
-pnpm test
 ```
 
-## Add an architecture
+### 2. Configure Environment
 
-Architectures are plain data in `src/architectures/*.ts` (JSON-compatible, see
-`src/dsl/types.ts`). Each node needs a `why`: that is the whole point of the atlas.
-Register it in `src/architectures/index.ts`.
+Copy `.env.example` to `.env` at the repository root:
 
-## Stack
+```bash
+cp .env.example .env
+```
 
-Vite, React, TypeScript, React Flow (`@xyflow/react`), ELK (`elkjs`) for layout, zustand.
+Key environment variables:
+
+| Variable | Description | Default / Example |
+| --- | --- | --- |
+| `DATABASE_URL` | PostgreSQL connection string | `postgresql://atlas:atlas@localhost:5432/atlas_infra` |
+| `PORT` | NestJS API port | `4001` |
+| `FRONTEND_URL` | Frontend origin for OAuth redirects | `http://localhost:5173` |
+| `CORS_ORIGINS` | Allowed CORS origins (comma-separated) | `http://localhost:5173` |
+| `JWT_ACCESS_SECRET` | HS256 secret for 15m access cookies | Long random string |
+| `JWT_REFRESH_SECRET` | HS256 secret for 7d refresh cookies | Long random string |
+| `OAUTH_STATE_SECRET` | HS256 secret for OAuth CSRF state cookie | Long random string |
+| `COOKIE_SAME_SITE` | `lax` (same-site dev) or `none` (cross-origin HTTPS) | `lax` |
+| `COOKIE_SECURE` | `false` for local HTTP, `true` for HTTPS | `false` |
+| `GOOGLE_CLIENT_ID` | Google OAuth Client ID | `...apps.googleusercontent.com` |
+| `GOOGLE_CLIENT_SECRET` | Google OAuth Client Secret | `GOCSPX-...` |
+| `GOOGLE_CALLBACK_URL` | Authorized redirect URI in Google Cloud Console | `http://localhost:5173/api/auth/google/callback` |
+
+> **Google Cloud Console setup**: Create an OAuth 2.0 Web Application client and add `http://localhost:5173/api/auth/google/callback` (which Vite proxies to `/api/auth/google/callback` on the NestJS server) as an Authorized Redirect URI.
+
+### 3. Start PostgreSQL, Run Migrations & Seed Reference Architectures
+
+Start Postgres via Docker Compose (or use your own Postgres instance):
+
+```bash
+docker compose up -d postgres
+```
+
+Run Kysely database migrations and seed the built-in reference architectures (`web-evolution`, `simple-web-app`, `k8s-prod-cluster`, `three-tier-network`):
+
+```bash
+pnpm db:migrate
+pnpm db:seed
+```
+
+### 4. Run Development Servers, Tests & Build
+
+```bash
+# Build shared package and run web + api dev servers concurrently
+pnpm dev
+
+# Run all tests (DSL parser/edit/stages, access-control, API integration, web store)
+pnpm test
+
+# Typecheck, lint, and build all workspace packages
+pnpm typecheck
+pnpm lint
+pnpm build
+```
+
+- Frontend (`apps/web`): `http://localhost:5173` (proxies `/api/*` to `http://localhost:4001`)
+- Backend (`apps/api`): `http://localhost:4001/api`
+
+## API Endpoints Overview
+
+- **Auth (`/api/auth`)**:
+  - `GET /api/auth/google` — Redirect to Google OAuth 2.0 consent screen with HMAC state cookie
+  - `GET /api/auth/google/callback` — Exchange code, upsert user, set `HttpOnly` access & refresh cookies
+  - `GET /api/auth/me` — Current authenticated user (`401` if unauthenticated)
+  - `POST /api/auth/refresh` — Refresh access cookie from `HttpOnly` refresh cookie
+  - `PATCH /api/auth/active-company` — Switch active company workspace scope
+  - `POST /api/auth/logout` — Clear session cookies
+- **Companies (`/api/companies`)**:
+  - `POST /api/companies` — Create company (creator becomes `owner`)
+  - `GET /api/companies` — List companies the user belongs to with role & member count
+  - `GET /api/companies/:id` & `PATCH /api/companies/:id` — View/edit company (`owner` or `admin` only)
+  - `DELETE /api/companies/:id` — Delete company (`owner` only)
+  - `GET/POST/PATCH/DELETE /api/companies/:id/members` — Manage members (`owner` or `admin` only; protects last `owner`)
+- **Architectures (`/api/architectures`)**:
+  - `GET /api/architectures` — List public/reference + user-owned + member-company architectures
+  - `GET /api/architectures/:idOrSlug` — Read architecture with computed permissions
+  - `POST /api/architectures` — Create personal or company architecture (server-validated YAML/DSL)
+  - `PATCH /api/architectures/:id` — Update architecture (`owner`, system `admin`, or company `owner`/`admin`/`editor`)
+  - `DELETE /api/architectures/:id` — Delete architecture (`owner`, system `admin`, or company `owner`/`admin`)
 
 ## License
 

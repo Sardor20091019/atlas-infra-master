@@ -4,8 +4,8 @@
     {
       "name": "atlas-dev",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["dev", "--port", "5173", "--strictPort"],
+      "runtimeArgs": ["dev"],
       "port": 5173
     }
-  ] 
+  ]
 }
