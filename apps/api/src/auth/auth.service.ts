@@ -37,9 +37,11 @@ export class AuthService {
     return Boolean(env.googleClientId && env.googleClientSecret);
   }
 
-  async startGoogleLogin(): Promise<{ authUrl: string; signedStateCookie: string }> {
+  async startGoogleLogin(
+    redirectUri?: string,
+  ): Promise<{ authUrl: string; signedStateCookie: string }> {
     const { state, signedCookie } = await this.tokens.signOAuthState();
-    const authUrl = this.googleOAuth.buildAuthorizationUrl(state);
+    const authUrl = this.googleOAuth.buildAuthorizationUrl(state, redirectUri);
     return { authUrl, signedStateCookie: signedCookie };
   }
 
@@ -47,13 +49,14 @@ export class AuthService {
     code: string,
     state: string,
     stateCookie: string | undefined,
+    redirectUri?: string,
   ): Promise<{ user: AuthUserDto; accessToken: string; refreshToken: string }> {
     const validState = await this.tokens.verifyOAuthState(state, stateCookie);
     if (!validState) {
       throw new UnauthorizedException('Invalid or expired OAuth state');
     }
 
-    const profile = await this.googleOAuth.exchangeCodeForUser(code);
+    const profile = await this.googleOAuth.exchangeCodeForUser(code, redirectUri);
     const now = new Date();
 
     const userRow = await this.database.db

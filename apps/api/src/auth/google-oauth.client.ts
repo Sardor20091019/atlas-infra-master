@@ -11,17 +11,17 @@ export interface GoogleUserProfile {
 export const GOOGLE_OAUTH_CLIENT = Symbol('GOOGLE_OAUTH_CLIENT');
 
 export interface GoogleOAuthClientInterface {
-  buildAuthorizationUrl(state: string): string;
-  exchangeCodeForUser(code: string): Promise<GoogleUserProfile>;
+  buildAuthorizationUrl(state: string, redirectUri?: string): string;
+  exchangeCodeForUser(code: string, redirectUri?: string): Promise<GoogleUserProfile>;
 }
 
 @Injectable()
 export class GoogleOAuthClient implements GoogleOAuthClientInterface {
-  buildAuthorizationUrl(state: string): string {
+  buildAuthorizationUrl(state: string, redirectUri?: string): string {
     const env = getEnv();
     const params = new URLSearchParams({
       client_id: env.googleClientId,
-      redirect_uri: env.googleCallbackUrl,
+      redirect_uri: redirectUri ?? env.googleCallbackUrl,
       response_type: 'code',
       scope: 'openid email profile',
       state,
@@ -31,7 +31,7 @@ export class GoogleOAuthClient implements GoogleOAuthClientInterface {
     return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
   }
 
-  async exchangeCodeForUser(code: string): Promise<GoogleUserProfile> {
+  async exchangeCodeForUser(code: string, redirectUri?: string): Promise<GoogleUserProfile> {
     const env = getEnv();
     const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
@@ -40,7 +40,7 @@ export class GoogleOAuthClient implements GoogleOAuthClientInterface {
         code,
         client_id: env.googleClientId,
         client_secret: env.googleClientSecret,
-        redirect_uri: env.googleCallbackUrl,
+        redirect_uri: redirectUri ?? env.googleCallbackUrl,
         grant_type: 'authorization_code',
       }),
     });

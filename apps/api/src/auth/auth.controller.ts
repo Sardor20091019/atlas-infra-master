@@ -24,6 +24,16 @@ import { getEnv } from '../config/env';
 import type { UserRow } from '../database/database.types';
 import { AuthService, toAuthUserDto } from './auth.service';
 
+function resolveVercelOrigin(req: Request): string | undefined {
+  if (!process.env.VERCEL) return undefined;
+  const protoHeader = req.headers['x-forwarded-proto'];
+  const hostHeader = req.headers['x-forwarded-host'] ?? req.headers.host;
+  const proto =
+    (Array.isArray(protoHeader) ? protoHeader[0] : protoHeader)?.split(',')[0]?.trim() || 'https';
+  const host = (Array.isArray(hostHeader) ? hostHeader[0] : hostHeader)?.split(',')[0]?.trim();
+  return host ? `${proto}://${host}` : undefined;
+}
+
 @Controller('auth')
 export class AuthController {
   constructor(
@@ -35,20 +45,23 @@ export class AuthController {
   @Get('google')
   async googleLogin(
     @Query('mode') mode: string | undefined,
+    @Req() req: Request,
     @Res() res: Response,
   ): Promise<void> {
     const env = getEnv();
+    const origin = resolveVercelOrigin(req) ?? env.frontendUrl;
     if (!this.authService.isGoogleConfigured()) {
       if (mode === 'json') {
         throw new ServiceUnavailableException(
           'Google OAuth is not configured on the server (missing GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET).',
         );
       }
-      res.redirect(`${env.frontendUrl}/?auth_error=google_not_configured`);
+      res.redirect(`${origin}/?auth_error=google_not_configured`);
       return;
     }
 
-    const { authUrl, signedStateCookie } = await this.authService.startGoogleLogin();
+    const callbackUrl = resolveVercelOrigin(req) ? `${origin}/api/auth/google/callback` : undefined;
+    const { authUrl, signedStateCookie } = await this.authService.startGoogleLogin(callbackUrl);
     this.tokens.setOAuthStateCookie(res, signedStateCookie);
     res.redirect(authUrl);
   }
@@ -63,15 +76,18 @@ export class AuthController {
     @Res() res: Response,
   ): Promise<void> {
     const env = getEnv();
+    const vercelOrigin = resolveVercelOrigin(req);
+    const origin = vercelOrigin ?? env.frontendUrl;
+    const callbackUrl = vercelOrigin ? `${vercelOrigin}/api/auth/google/callback` : undefined;
     const stateCookie = req.cookies?.[OAUTH_STATE_COOKIE_NAME] as string | undefined;
     this.tokens.clearOAuthStateCookie(res);
 
     if (oauthError) {
-      res.redirect(`${env.frontendUrl}/?auth_error=${encodeURIComponent(oauthError)}`);
+      res.redirect(`${origin}/?auth_error=${encodeURIComponent(oauthError)}`);
       return;
     }
     if (!code || !state) {
-      res.redirect(`${env.frontendUrl}/?auth_error=missing_code_or_state`);
+      res.redirect(`${origin}/?auth_error=missing_code_or_state`);
       return;
     }
 
@@ -80,11 +96,12 @@ export class AuthController {
         code,
         state,
         stateCookie,
+        callbackUrl,
       );
       this.tokens.setSessionCookies(res, accessToken, refreshToken);
-      res.redirect(`${env.frontendUrl}/`);
+      res.redirect(`${origin}/`);
     } catch {
-      res.redirect(`${env.frontendUrl}/?auth_error=oauth_failed`);
+      res.redirect(`${origin}/?auth_error=oauth_failed`);
     }
   }
 
