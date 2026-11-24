@@ -41,7 +41,12 @@ export function getEnv(): ApiEnv {
   loadDotEnvOnce();
 
   const nodeEnv = process.env.NODE_ENV ?? 'development';
-  const frontendUrl = (process.env.FRONTEND_URL ?? 'http://localhost:5173').replace(/\/+$/, '');
+  const vercelHost = process.env.VERCEL_PROJECT_PRODUCTION_URL ?? process.env.VERCEL_URL;
+  const vercelOrigin = vercelHost ? `https://${vercelHost}` : undefined;
+  const frontendUrl = (process.env.FRONTEND_URL ?? vercelOrigin ?? 'http://localhost:5173').replace(
+    /\/+$/,
+    '',
+  );
   const rawOrigins = process.env.CORS_ORIGINS ?? frontendUrl;
   const corsOrigins = rawOrigins
     .split(',')
@@ -54,7 +59,8 @@ export function getEnv(): ApiEnv {
   const cookieSecure =
     process.env.COOKIE_SECURE === 'true' ||
     cookieSameSite === 'none' ||
-    nodeEnv === 'production';
+    nodeEnv === 'production' ||
+    Boolean(process.env.VERCEL);
 
   const port = Number.parseInt(process.env.PORT ?? '4001', 10) || 4001;
   const accessTokenTtlSeconds = Number.parseInt(process.env.ACCESS_TOKEN_TTL_SECONDS ?? '900', 10) || 900;

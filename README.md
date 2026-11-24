@@ -93,6 +93,24 @@ pnpm build
 - Frontend (`apps/web`): `http://localhost:5173` (proxies `/api/*` to `http://localhost:4001`)
 - Backend (`apps/api`): `http://localhost:4001/api`
 
+## Deploy on Vercel
+
+This repository is pre-configured for **one-project full-stack Vercel deployment** via [vercel.json](./vercel.json) and [api/index.ts](./api/index.ts) (serving `apps/web/dist` and routing `/api/*` to the NestJS serverless handler on the same origin so `HttpOnly` cookies work without CORS issues).
+
+1. **Import the GitHub repo** in Vercel (keep the Root Directory as `.` — Vercel reads `vercel.json` automatically).
+2. **Add Environment Variables** in Vercel Project Settings:
+   - `DATABASE_URL` — your Neon PostgreSQL connection string
+   - `GOOGLE_CLIENT_ID` & `GOOGLE_CLIENT_SECRET`
+   - `GOOGLE_CALLBACK_URL` — `https://<your-vercel-domain>/api/auth/google/callback`
+   - `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `OAUTH_STATE_SECRET` — long random strings
+   - Optional: `FRONTEND_URL=https://<your-vercel-domain>` (auto-detected from `VERCEL_PROJECT_PRODUCTION_URL` / `VERCEL_URL` if omitted)
+3. **Register the Redirect URI** in Google Cloud Console:
+   - `https://<your-vercel-domain>/api/auth/google/callback`
+4. **Migrate & seed** your production Postgres once (already done if pointing to the same Neon DB):
+   ```bash
+   pnpm db:migrate && pnpm db:seed
+   ```
+
 ## API Endpoints Overview
 
 - **Auth (`/api/auth`)**:

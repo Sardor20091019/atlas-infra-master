@@ -1,21 +1,10 @@
 import 'reflect-metadata';
-import cookieParser from 'cookie-parser';
-import { NestFactory } from '@nestjs/core';
-import { AppModule } from './app.module';
 import { getEnv } from './config/env';
+import { createNestApp } from './create-app';
 
 async function bootstrap(): Promise<void> {
   const env = getEnv();
-  const app = await NestFactory.create(AppModule);
-
-  app.setGlobalPrefix('api');
-  app.use(cookieParser());
-  app.enableCors({
-    origin: env.corsOrigins,
-    credentials: true,
-    methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-  });
+  const { app } = await createNestApp();
 
   try {
     await app.listen(env.port);
