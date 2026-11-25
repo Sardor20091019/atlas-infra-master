@@ -19,6 +19,8 @@ import { api, ApiError } from '../api/client';
 /** Pseudo-id of the user's own local scratch architecture in the selector. */
 export const CUSTOM_ID = 'custom';
 export const DRAFT_STORAGE_KEY = 'atlas.draft.v1';
+export const THEME_STORAGE_KEY = 'atlas.theme.v1';
+export type ThemeMode = 'light' | 'dark';
 
 const MAX_HISTORY = 100;
 /** Consecutive edits of the same field within this window become one undo step. */
@@ -39,6 +41,9 @@ export interface AtlasState {
   /** High-level app mode: 'explore' (clean presentation, 85%+ canvas) vs 'build' (editing workspace). */
   appMode: 'explore' | 'build';
   setAppMode: (mode: 'explore' | 'build') => void;
+  theme: ThemeMode;
+  setTheme: (theme: ThemeMode) => void;
+  toggleTheme: () => void;
 
   /** Selected node or group id. */
   selectedId: string | null;
@@ -112,6 +117,30 @@ function readStoredDraft(): string {
   }
 }
 
+function readStoredTheme(): ThemeMode {
+  try {
+    const saved = localStorage.getItem(THEME_STORAGE_KEY);
+    if (saved === 'light' || saved === 'dark') return saved;
+    if (typeof window !== 'undefined' && window.matchMedia?.('(prefers-color-scheme: dark)').matches) {
+      return 'dark';
+    }
+  } catch {
+    // Ignore storage errors.
+  }
+  return 'light';
+}
+
+function applyTheme(theme: ThemeMode): void {
+  if (typeof document !== 'undefined') {
+    document.documentElement.dataset.theme = theme;
+  }
+  try {
+    localStorage.setItem(THEME_STORAGE_KEY, theme);
+  } catch {
+    // Ignore storage errors.
+  }
+}
+
 export function isDraftBackedState(
   s: Pick<AtlasState, 'architectureId' | 'cloudArchitectures'>,
 ): boolean {
@@ -130,10 +159,24 @@ export function selectActiveCloud(
 
 const first = referenceArchitectures[0];
 const initialLocalDraft = readStoredDraft();
+const initialTheme = readStoredTheme();
+if (typeof document !== 'undefined') {
+  document.documentElement.dataset.theme = initialTheme;
+}
 
 export const useAtlasStore = create<AtlasState>((set, get) => ({
   appMode: 'explore',
   setAppMode: (mode) => set({ appMode: mode }),
+  theme: initialTheme,
+  setTheme: (theme) => {
+    applyTheme(theme);
+    set({ theme });
+  },
+  toggleTheme: () => {
+    const next: ThemeMode = get().theme === 'dark' ? 'light' : 'dark';
+    applyTheme(next);
+    set({ theme: next });
+  },
   architectureId: first.id,
   activeLayers: new Set(first.layers),
   selectedId: null,

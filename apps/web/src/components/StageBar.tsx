@@ -7,7 +7,10 @@ function isEditable(target: EventTarget | null): boolean {
   return target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName);
 }
 
-/** Physical bottom-center timeline rail with a crisp 1-sentence "What changed & why" callout. */
+/**
+ * Vertical stepped evolution timeline inside the left workbench rail.
+ * Supports ↑/↓ (and ←/→) keyboard navigation when no trace is active.
+ */
 export function StageBar() {
   const view = useStagedView();
   const setStage = useAtlasStore((s) => s.setStage);
@@ -16,90 +19,76 @@ export function StageBar() {
   const index = view?.index ?? 0;
   const count = stages.length;
 
-  // Arrow key navigation (← / →)
   useEffect(() => {
-    if (count < 2) return;
+    if (count < 2 || traceId) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.altKey || e.ctrlKey || e.metaKey || isEditable(e.target)) return;
-      if (e.key === 'ArrowRight' && index < count - 1) setStage(index + 1);
-      else if (e.key === 'ArrowLeft' && index > 0) setStage(index - 1);
-      else return;
+      if ((e.key === 'ArrowDown' || e.key === 'ArrowRight') && index < count - 1) {
+        setStage(index + 1);
+      } else if ((e.key === 'ArrowUp' || e.key === 'ArrowLeft') && index > 0) {
+        setStage(index - 1);
+      } else {
+        return;
+      }
       e.preventDefault();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [index, count, setStage]);
+  }, [index, count, traceId, setStage]);
 
-  // Hidden if there is only 1 stage or when a request trace is actively playing
-  if (count < 2 || traceId) return null;
+  if (count < 2) return null;
 
   const currentStage = stages[index];
   const stageNum = String(index + 1).padStart(2, '0');
   const totalNum = String(count).padStart(2, '0');
 
   return (
-    <div className="stage-dock" role="region" aria-label="Architecture evolution timeline">
-      {/* 1-Sentence "What changed & why" callout right above the rail */}
-      <div className="stage-callout">
-        <div className="stage-callout-head">
-          <span className="stage-callout-badge tabular">
-            STAGE {stageNum} OF {totalNum}
-          </span>
-          <span className="stage-callout-title">{currentStage.label}</span>
-          {currentStage.scale && (
-            <span className="stage-callout-scale tabular">[{currentStage.scale}]</span>
-          )}
-        </div>
-        <p className="stage-callout-summary">{currentStage.summary}</p>
+    <section className="rail-section" role="region" aria-label="Evolution Stages">
+      <div className="rail-section-head">
+        <span className="rail-section-title">Evolution Stages</span>
+        <span className="rail-section-meta tabular">
+          {stageNum}/{totalNum}
+        </span>
       </div>
 
-      {/* Tactile Horizontal Timeline Rail */}
-      <div className="stage-rail">
-        <button
-          className="stage-rail-nav"
-          onClick={() => setStage(index - 1)}
-          disabled={index === 0}
-          title="Previous stage (← Arrow)"
-          aria-label="Previous evolution stage"
-        >
-          ‹
-        </button>
-
-        <ol className="stage-rail-steps">
-          {stages.map((st, i) => {
-            const isCur = i === index;
-            const isDone = i < index;
-            const num = String(i + 1).padStart(2, '0');
-            return (
-              <li key={st.id} className={isCur ? 'cur' : isDone ? 'done' : ''}>
-                <button
-                  onClick={() => setStage(i)}
-                  title={`${num}. ${st.label}\n${st.summary}`}
-                  aria-current={isCur ? 'step' : undefined}
-                >
-                  <span className="stage-rail-track">
-                    <span className="stage-rail-pip" />
+      <ol className="stage-timeline">
+        {stages.map((st, i) => {
+          const isCur = i === index;
+          const isDone = i < index;
+          const num = String(i + 1).padStart(2, '0');
+          return (
+            <li
+              key={st.id}
+              className={`stage-timeline-item${isCur ? ' active' : ''}${isDone ? ' done' : ''}`}
+            >
+              <button
+                type="button"
+                className="stage-timeline-btn"
+                onClick={() => setStage(i)}
+                aria-current={isCur ? 'step' : undefined}
+              >
+                <span className="stage-timeline-marker" aria-hidden="true">
+                  <span className="stage-timeline-dot" />
+                </span>
+                <span className="stage-timeline-content">
+                  <span className="stage-timeline-row">
+                    <span className="stage-timeline-num tabular">{num}</span>
+                    <span className="stage-timeline-label">{st.label}</span>
+                    {st.scale && <span className="stage-timeline-scale tabular">{st.scale}</span>}
                   </span>
-                  <span className="stage-rail-label">
-                    <span className="stage-step-num tabular">{num}</span>
-                    <span className="stage-step-text">{st.label}</span>
-                  </span>
-                </button>
-              </li>
-            );
-          })}
-        </ol>
+                </span>
+              </button>
 
-        <button
-          className="stage-rail-nav"
-          onClick={() => setStage(index + 1)}
-          disabled={index === count - 1}
-          title="Next stage (→ Arrow)"
-          aria-label="Next evolution stage"
-        >
-          ›
-        </button>
-      </div>
-    </div>
+              {isCur && currentStage && (
+                <div className="stage-story-block">
+                  <div className="stage-story-kicker tabular">What changed &amp; why</div>
+                  <p className="stage-story-text">{currentStage.summary}</p>
+                </div>
+              )}
+            </li>
+          );
+        })}
+      </ol>
+    </section>
   );
 }

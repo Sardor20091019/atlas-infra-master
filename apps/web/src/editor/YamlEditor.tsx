@@ -7,6 +7,7 @@ import { lintGutter, setDiagnostics } from '@codemirror/lint';
 import { indentWithTab } from '@codemirror/commands';
 import { oneDark } from '@codemirror/theme-one-dark';
 import type { Diagnostic } from '@atlas/shared';
+import { useAtlasStore } from '../store/useAtlasStore';
 import { atlasCompletion } from './completion';
 
 export interface YamlEditorHandle {
@@ -27,49 +28,89 @@ interface Props {
   ref?: Ref<YamlEditorHandle>;
 }
 
-const atlasTheme = EditorView.theme(
+const lightTheme = EditorView.theme(
   {
     '&': {
       height: '100%',
       fontSize: '12px',
-      backgroundColor: '#0d0f12',
-      color: '#f0f2f5',
+      backgroundColor: '#FAF9F6',
+      color: '#141518',
     },
     '.cm-scroller': {
       fontFamily: "'JetBrains Mono', 'SF Mono', Consolas, Menlo, monospace",
       lineHeight: '1.6',
     },
     '.cm-gutters': {
-      backgroundColor: '#090b0e',
-      borderRight: '1px solid #232732',
-      color: '#626c7a',
+      backgroundColor: '#F3F2EE',
+      borderRight: '1px solid #DFDDD6',
+      color: '#8E9199',
     },
     '.cm-activeLine': {
-      backgroundColor: '#161922',
+      backgroundColor: 'rgba(37, 99, 235, 0.05)',
     },
     '.cm-activeLineGutter': {
-      backgroundColor: '#161922',
-      color: '#f0f2f5',
+      backgroundColor: '#EAE8E2',
+      color: '#141518',
     },
     '.cm-selectionBackground, ::selection': {
-      backgroundColor: 'rgba(56, 152, 236, 0.22) !important',
+      backgroundColor: 'rgba(37, 99, 235, 0.16) !important',
     },
     '.cm-cursor': {
-      borderLeftColor: '#3898ec',
+      borderLeftColor: '#2563EB',
     },
   },
-  { dark: true },
+  { dark: false },
 );
 
+const darkTheme = [
+  oneDark,
+  EditorView.theme(
+    {
+      '&': {
+        height: '100%',
+        fontSize: '12px',
+        backgroundColor: '#101215',
+        color: '#ECEEF2',
+      },
+      '.cm-scroller': {
+        fontFamily: "'JetBrains Mono', 'SF Mono', Consolas, Menlo, monospace",
+        lineHeight: '1.6',
+      },
+      '.cm-gutters': {
+        backgroundColor: '#16181C',
+        borderRight: '1px solid #2A2E37',
+        color: '#6B7280',
+      },
+      '.cm-activeLine': {
+        backgroundColor: 'rgba(59, 130, 246, 0.08)',
+      },
+      '.cm-activeLineGutter': {
+        backgroundColor: '#1F232A',
+        color: '#ECEEF2',
+      },
+      '.cm-selectionBackground, ::selection': {
+        backgroundColor: 'rgba(59, 130, 246, 0.24) !important',
+      },
+      '.cm-cursor': {
+        borderLeftColor: '#3B82F6',
+      },
+    },
+    { dark: true },
+  ),
+];
+
 export function YamlEditor({ initialText, onChange, readOnly = false, ref }: Props) {
+  const theme = useAtlasStore((s) => s.theme);
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
   const readOnlyComp = useRef(new Compartment());
+  const themeComp = useRef(new Compartment());
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
 
   useEffect(() => {
     const comp = readOnlyComp.current;
+    const tComp = themeComp.current;
     const v = new EditorView({
       parent: host.current!,
       state: EditorState.create({
@@ -81,8 +122,7 @@ export function YamlEditor({ initialText, onChange, readOnly = false, ref }: Pro
           EditorView.lineWrapping,
           EditorState.languageData.of(() => [{ autocomplete: atlasCompletion }]),
           lintGutter(),
-          oneDark,
-          atlasTheme,
+          tComp.of(theme === 'dark' ? darkTheme : lightTheme),
           comp.of(EditorState.readOnly.of(readOnly)),
           EditorView.updateListener.of((u) => {
             if (u.docChanged) onChangeRef.current(u.state.doc.toString());
@@ -106,6 +146,14 @@ export function YamlEditor({ initialText, onChange, readOnly = false, ref }: Pro
       effects: readOnlyComp.current.reconfigure(EditorState.readOnly.of(readOnly)),
     });
   }, [readOnly]);
+
+  useEffect(() => {
+    const v = view.current;
+    if (!v) return;
+    v.dispatch({
+      effects: themeComp.current.reconfigure(theme === 'dark' ? darkTheme : lightTheme),
+    });
+  }, [theme]);
 
   useImperativeHandle(ref, () => ({
     replace: (text) => {

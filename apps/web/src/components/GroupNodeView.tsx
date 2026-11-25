@@ -11,10 +11,10 @@ export function GroupNodeView({ data }: NodeProps<Node<GroupNodeData, 'zone'>>) 
   return (
     <div className={`group-node kind-${group.kind}${selected ? ' selected' : ''}`}>
       <div className="group-node-blueprint-tag">
-        <span className="blueprint-kind tabular">[{group.kind.toUpperCase()}]</span>
+        <span className="blueprint-kind tabular">{group.kind.toUpperCase()}</span>
         <span className="blueprint-name">{group.label}</span>
         {cidr && <span className="blueprint-cidr tabular">{cidr}</span>}
-        {zone && <span className="blueprint-zone">{zone.toUpperCase()}</span>}
+        {zone && <span className="blueprint-zone tabular">{zone.toUpperCase()}</span>}
       </div>
     </div>
   );

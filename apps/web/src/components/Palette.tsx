@@ -65,16 +65,7 @@ export function Palette() {
                     onClick={() => runEdit((text, ctx) => addNode(text, ctx, { type: t, group: targetGroup() }))}
                     title={`${info.description} (${LAYERS[DEFAULT_NODE_LAYER[t]].label} layer)`}
                   >
-                    <span
-                      className="palette-glyph"
-                      style={{
-                        background: `${info.color}18`,
-                        color: info.color,
-                        borderColor: `${info.color}30`,
-                      }}
-                    >
-                      {info.glyph}
-                    </span>
+                    <span className="palette-glyph">{info.glyph}</span>
                     <span className="palette-label">{info.label}</span>
                   </button>
                 );

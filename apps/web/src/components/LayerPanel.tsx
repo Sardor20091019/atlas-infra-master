@@ -1,28 +1,17 @@
 import { LAYERS, type LayerId } from '@atlas/shared';
 import { useArchitecture } from '../store/useArchitecture';
 import { useAtlasStore } from '../store/useAtlasStore';
-import { TracePanel } from './TracePanel';
-import { Palette } from './Palette';
-import { isDraftBackedState } from '../store/useAtlasStore';
 
-const LAYER_ACCENTS: Record<LayerId, string> = {
-  physical: '#d95d39',
-  network: '#258bd2',
-  compute: '#4f6df5',
-  services: '#10b981',
-  data: '#d9822b',
-  platform: '#8b5cf6',
-};
-
+/**
+ * Single-click layer visibility toggles inside the left workbench rail.
+ */
 export function LayerPanel() {
-  const isDraft = useAtlasStore((s) => isDraftBackedState(s));
   const active = useAtlasStore((s) => s.activeLayers);
   const toggle = useAtlasStore((s) => s.toggleLayer);
   const setAll = useAtlasStore((s) => s.setAllLayers);
   const arch = useArchitecture();
   if (!arch) return null;
 
-  // Count items per layer for tactical cartographic density readout
   const layerCounts = arch.layers.reduce(
     (acc, id) => {
       const nodes = arch.nodes.filter((n) => n.layer === id).length;
@@ -34,53 +23,77 @@ export function LayerPanel() {
   );
 
   return (
-    <aside className="panel layer-panel" aria-label="Layer Visibility Controls">
-      {isDraft && <Palette />}
-      <div className="panel-title">
-        <span>Cartographic Layers</span>
-        <span className="panel-actions">
-          <button onClick={() => setAll(arch.layers)} title="Show all layers">
+    <section className="rail-section" aria-label="Layer Visibility Controls">
+      <div className="rail-section-head">
+        <span className="rail-section-title">Layers</span>
+        <span className="rail-section-actions">
+          <button
+            type="button"
+            className="rail-text-btn"
+            onClick={() => setAll(arch.layers)}
+            title="Show all layers"
+          >
             All
           </button>
-          <button onClick={() => setAll([])} title="Hide all layers">
+          <span className="rail-text-sep" aria-hidden="true">
+            /
+          </span>
+          <button
+            type="button"
+            className="rail-text-btn"
+            onClick={() => setAll([])}
+            title="Hide all layers"
+          >
             None
           </button>
         </span>
       </div>
-      <div className="layer-list" role="group" aria-label="Toggle visible layers">
+
+      <div className="layer-toggle-list" role="group" aria-label="Toggle visible layers">
         {arch.layers.map((id) => {
           const layer = LAYERS[id];
           const on = active.has(id);
-          const accent = LAYER_ACCENTS[id] ?? '#64748b';
           const count = layerCounts[id] ?? 0;
           return (
-            <label
+            <button
               key={id}
-              className={`layer-row${on ? ' on' : ''}`}
+              type="button"
+              role="switch"
+              aria-checked={on}
+              className={`layer-toggle-row${on ? ' on' : ''}`}
+              onClick={() => toggle(id)}
               title={layer.description}
             >
-              <input
-                type="checkbox"
-                checked={on}
-                onChange={() => toggle(id)}
-                aria-label={`Toggle ${layer.label} layer`}
-              />
-              <span className="layer-content">
-                <span className="layer-header-line">
-                  <span
-                    className="layer-dot"
-                    style={{ background: accent, opacity: on ? 1 : 0.4 }}
-                  />
-                  <span className="layer-label">{layer.label}</span>
-                  {count > 0 && <span className="layer-count tabular">{count}</span>}
-                </span>
-                <span className="layer-desc">{layer.description}</span>
+              <span className="layer-eye" aria-hidden="true">
+                {on ? (
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                    <path
+                      d="M1.5 8s2.3-4.5 6.5-4.5S14.5 8 14.5 8s-2.3 4.5-6.5 4.5S1.5 8 1.5 8Z"
+                      stroke="currentColor"
+                      strokeWidth="1.35"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                    <circle cx="8" cy="8" r="2" fill="currentColor" />
+                  </svg>
+                ) : (
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                    <path
+                      d="M2 2l12 12M6.6 6.7A2 2 0 0 0 9.3 9.4M4.3 4.5C2.7 5.6 1.5 8 1.5 8s2.3 4.5 6.5 4.5c1.3 0 2.5-.4 3.5-1M10.8 4.2A6.6 6.6 0 0 1 14.5 8s-.9 1.7-2.4 3"
+                      stroke="currentColor"
+                      strokeWidth="1.35"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                )}
               </span>
-            </label>
+              <span className="layer-toggle-name">{layer.label}</span>
+              {count > 0 && <span className="layer-toggle-count tabular">{count}</span>}
+            </button>
           );
         })}
       </div>
-      <TracePanel />
-    </aside>
+    </section>
   );
 }

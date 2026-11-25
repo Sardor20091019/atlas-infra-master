@@ -2,8 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } fro
 import {
   applyNodeChanges,
   Background,
-  Controls,
-  MiniMap,
   ReactFlow,
   useReactFlow,
   type Connection,
@@ -20,12 +18,14 @@ import { filterByLayers } from '../layout/filter';
 import { layoutGraph, type AtlasEdge, type AtlasNode } from '../layout/elk';
 import { InfraNodeView } from './InfraNodeView';
 import { GroupNodeView } from './GroupNodeView';
-import { TraceBar } from './TracePanel';
-import { StageBar } from './StageBar';
-import { FloatingControls } from './FloatingControls';
 import { PALETTE_MIME, type PalettePayload } from './Palette';
 import { useCanEdit } from '../store/useCanEdit';
 import { addEdge, addGroup, addNode, deleteEdge, deleteItem, moveItem } from '@atlas/shared';
+
+interface CanvasProps {
+  sidebarCollapsed?: boolean;
+  onExpandSidebar?: () => void;
+}
 
 /** Elements where Delete and Ctrl+Z belong to the element itself. */
 function isEditable(target: EventTarget | null): boolean {
@@ -51,7 +51,12 @@ function groupRects(nodes: AtlasNode[]): Rect[] {
   };
   return nodes
     .filter((n) => n.type === 'zone')
-    .map((n) => ({ id: n.id, ...abs(n), w: Number(n.style?.width ?? 0), h: Number(n.style?.height ?? 0) }));
+    .map((n) => ({
+      id: n.id,
+      ...abs(n),
+      w: Number(n.style?.width ?? 0),
+      h: Number(n.style?.height ?? 0),
+    }));
 }
 
 /** Ids of a group and everything nested in it. */
@@ -72,13 +77,12 @@ function subtree(nodes: AtlasNode[], rootId: string): Set<string> {
 
 const nodeTypes = { infra: InfraNodeView, zone: GroupNodeView };
 const FIT: FitViewOptions = { padding: 0.1 };
-/** Leave room at bottom for the timeline rail so it never covers the diagram. */
-const FIT_WITH_STAGES: FitViewOptions = { padding: { top: '5%', bottom: '112px', left: '6%', right: '6%' } };
 /** Matches the CSS transition on nodes while `.animating` is set. */
-const MOVE_MS = 500;
+const MOVE_MS = 300;
 
-export function Canvas() {
+export function Canvas({ sidebarCollapsed = false, onExpandSidebar }: CanvasProps) {
   const architectureId = useAtlasStore((s) => s.architectureId);
+  const theme = useAtlasStore((s) => s.theme);
   const activeLayers = useAtlasStore((s) => s.activeLayers);
   const select = useAtlasStore((s) => s.select);
   const traceId = useAtlasStore((s) => s.traceId);
@@ -92,7 +96,7 @@ export function Canvas() {
   const redo = useAtlasStore((s) => s.redo);
   const notice = useAtlasStore((s) => s.notice);
   const setNotice = useAtlasStore((s) => s.setNotice);
-  const { fitView, screenToFlowPosition } = useReactFlow();
+  const { fitView, zoomIn, zoomOut, screenToFlowPosition } = useReactFlow();
   const { canEdit } = useCanEdit();
 
   const [nodes, setNodes] = useState<AtlasNode[]>([]);
@@ -101,6 +105,7 @@ export function Canvas() {
   const [layoutVersion, setLayoutVersion] = useState(0);
   const [layoutError, setLayoutError] = useState<string | null>(null);
   const [animating, setAnimating] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const lastRemountKey = useRef('');
   const lastMoveKey = useRef('');
   const lastEditRev = useRef(0);
@@ -116,7 +121,6 @@ export function Canvas() {
   const arch = view?.arch;
   const cloudArchitectures = useAtlasStore((s) => s.cloudArchitectures);
   const isDraft = isDraftBackedState({ architectureId, cloudArchitectures });
-  const fit = (view?.stages.length ?? 0) > 1 ? FIT_WITH_STAGES : FIT;
 
   // A different document remounts the canvas (instant fit). Stage and layer
   // changes keep it mounted so nodes glide to their new positions.
@@ -138,7 +142,6 @@ export function Canvas() {
         if (cancelled) return;
         const remount = remountKey !== lastRemountKey.current || shownCount.current === 0;
         const move = !remount && moveKey !== lastMoveKey.current;
-        // Canvas edits glide into place but keep the viewport where the user put it.
         const edited = !remount && !move && draftEditRev !== lastEditRev.current;
         lastRemountKey.current = remountKey;
         lastMoveKey.current = moveKey;
@@ -163,18 +166,17 @@ export function Canvas() {
     return () => {
       cancelled = true;
     };
-    // The keys are derived from these dependencies; they only decide how to show the result.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [arch, activeLayers]);
 
-  // After React Flow has measured the moved nodes, pan and zoom to the new extent.
+  // Smooth 300ms camera transition after stage/layer changes.
   useEffect(() => {
     if (!pendingFit.current) return;
     pendingFit.current = false;
-    window.setTimeout(() => fitView({ ...fit, duration: MOVE_MS }), 50);
-  }, [nodes, fitView, fit]);
+    window.setTimeout(() => fitView({ ...FIT, duration: MOVE_MS }), 40);
+  }, [nodes, fitView]);
 
-  // Opening or closing the YAML panel changes the canvas width; refit once the grid has settled.
+  // Refit smoothly when toggling the YAML drawer or collapsing/expanding the left rail.
   const editorShown = isDraft && editorOpen;
   const firstPanelRender = useRef(true);
   useEffect(() => {
@@ -182,15 +184,13 @@ export function Canvas() {
       firstPanelRender.current = false;
       return;
     }
-    const t = window.setTimeout(() => fitView({ ...fit, duration: 300 }), 80);
+    const t = window.setTimeout(() => fitView({ ...FIT, duration: MOVE_MS }), 120);
     return () => window.clearTimeout(t);
-    // Only the panel toggle should trigger this, not every change of fit options.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editorShown]);
+  }, [editorShown, sidebarCollapsed, fitView]);
 
   useEffect(() => {
     if (!animating) return;
-    const t = window.setTimeout(() => setAnimating(false), MOVE_MS + 150);
+    const t = window.setTimeout(() => setAnimating(false), MOVE_MS + 120);
     return () => window.clearTimeout(t);
   }, [animating]);
 
@@ -202,13 +202,19 @@ export function Canvas() {
 
   // --- Visual editing -------------------------------------------------------
 
-  const flowPoint = (e: { clientX: number; clientY: number }) => screenToFlowPosition({ x: e.clientX, y: e.clientY });
+  const flowPoint = (e: { clientX: number; clientY: number }) =>
+    screenToFlowPosition({ x: e.clientX, y: e.clientY });
 
   /** The innermost box under a point, ignoring `exclude` (the dragged item and its contents). */
   const boxAt = useCallback(
     (point: { x: number; y: number }, exclude: Set<string> = new Set()): string | undefined => {
       const hits = groupRects(laidOut.current).filter(
-        (r) => !exclude.has(r.id) && point.x >= r.x && point.x <= r.x + r.w && point.y >= r.y && point.y <= r.y + r.h,
+        (r) =>
+          !exclude.has(r.id) &&
+          point.x >= r.x &&
+          point.x <= r.x + r.w &&
+          point.y >= r.y &&
+          point.y <= r.y + r.h,
       );
       hits.sort((a, b) => a.w * a.h - b.w * b.h);
       return hits[0]?.id;
@@ -216,13 +222,13 @@ export function Canvas() {
     [],
   );
 
-  // Only positions are applied locally (while dragging); everything else comes from the YAML.
   const onNodesChange = useCallback((changes: NodeChange<AtlasNode>[]) => {
     const moves = changes.filter((c) => c.type === 'position');
     if (moves.length) setNodes((nds) => applyNodeChanges(moves, nds));
   }, []);
 
-  const pointerOf = (e: MouseEvent | TouchEvent) => ('touches' in e ? (e.changedTouches[0] ?? e.touches[0]) : e);
+  const pointerOf = (e: MouseEvent | TouchEvent) =>
+    'touches' in e ? (e.changedTouches[0] ?? e.touches[0]) : e;
 
   const onNodeDrag: OnNodeDrag<AtlasNode> = (e, node) => {
     setDropTarget(boxAt(flowPoint(pointerOf(e)), subtree(laidOut.current, node.id)) ?? null);
@@ -233,7 +239,6 @@ export function Canvas() {
     const target = boxAt(flowPoint(pointerOf(e)), subtree(laidOut.current, node.id));
     const current = laidOut.current.find((n) => n.id === node.id)?.parentId;
     const moved = target !== current && runEdit((text, ctx) => moveItem(text, ctx, node.id, target));
-    // Layout is automatic: a drop that does not change the box simply snaps back.
     if (!moved) setNodes(laidOut.current);
   };
 
@@ -260,7 +265,8 @@ export function Canvas() {
   };
 
   const onConnect = (c: Connection) => {
-    if (c.source && c.target) runEdit((text, ctx) => addEdge(text, ctx, { from: c.source, to: c.target }));
+    if (c.source && c.target)
+      runEdit((text, ctx) => addEdge(text, ctx, { from: c.source, to: c.target }));
   };
 
   const onEdgeClick: EdgeMouseHandler = (_, edge) => {
@@ -300,7 +306,6 @@ export function Canvas() {
     return () => window.removeEventListener('keydown', onKey);
   }, [isDraft, canEdit, selectedEdge, selectedId, runEdit, undo, redo]);
 
-  // An edge selection only makes sense while editing.
   useEffect(() => {
     if (!canEdit) setSelectedEdge(null);
   }, [canEdit]);
@@ -317,11 +322,12 @@ export function Canvas() {
         shownNodes: nodes.map((n) => ({
           ...n,
           className: n.id === dropTarget ? 'drop-target' : stageClass(n.id),
-          // Boxes are free to leave their parent while editing; the drop decides the new parent.
           ...(canEdit ? { draggable: true, extent: undefined } : {}),
         })),
         shownEdges: edges.map((e) =>
-          `${e.source}->${e.target}` === selectedEdge ? { ...e, className: 'edge-selected', zIndex: 1001 } : e,
+          `${e.source}->${e.target}` === selectedEdge
+            ? { ...e, className: 'edge-selected', zIndex: 1001 }
+            : e,
         ),
       };
     }
@@ -342,7 +348,14 @@ export function Canvas() {
       shownNodes: nodes.map((n) =>
         n.type !== 'infra'
           ? n
-          : { ...n, className: activeNodes.has(n.id) ? 'trace-active' : touched.has(n.id) ? 'trace-done' : 'trace-dim' },
+          : {
+              ...n,
+              className: activeNodes.has(n.id)
+                ? 'trace-active'
+                : touched.has(n.id)
+                  ? 'trace-done'
+                  : 'trace-dim',
+            },
       ),
       shownEdges: edges.map((e) => {
         const key = `${e.source}->${e.target}`;
@@ -355,32 +368,48 @@ export function Canvas() {
   const onNodeClick: NodeMouseHandler = (_, node) => {
     select(node.id);
     setSelectedEdge(null);
+    setShortcutsOpen(false);
   };
-  const showMinimap = !(isDraft && editorOpen);
 
   return (
     <div
-      className={`canvas${animating ? ' animating' : ''}${showMinimap ? ' with-minimap' : ''}${canEdit ? ' editing' : ''}${connecting ? ' connecting' : ''}`}
+      className={`canvas${animating ? ' animating' : ''}${canEdit ? ' editing' : ''}${connecting ? ' connecting' : ''}`}
       onDragOver={onDragOver}
       onDrop={onDrop}
       onDragLeave={(e) => {
         if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDropTarget(null);
       }}
     >
+      {/* Collapsed sidebar re-open trigger */}
+      {sidebarCollapsed && onExpandSidebar && (
+        <button
+          type="button"
+          className="canvas-expand-rail-btn"
+          onClick={onExpandSidebar}
+          title="Expand workbench sidebar ([)"
+          aria-label="Expand workbench sidebar"
+        >
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <rect x="1.5" y="2.5" width="13" height="11" rx="2" stroke="currentColor" strokeWidth="1.3" />
+            <path d="M5.5 2.5v11" stroke="currentColor" strokeWidth="1.3" />
+            <path d="M8.5 6.5 10.5 8l-2 1.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          <span>Workbench</span>
+          <span className="key-hint">[</span>
+        </button>
+      )}
+
       {notice && <div className="canvas-notice">{notice}</div>}
-      {busy && <div className="canvas-busy">layout…</div>}
+      {busy && <div className="canvas-busy">Calculating layout…</div>}
       {layoutError && <div className="canvas-busy error">Layout failed: {layoutError}</div>}
       {isDraft && !arch && (
-        <div className="canvas-empty">Fix the errors in the editor to see the diagram.</div>
+        <div className="canvas-empty">Fix the errors in the YAML editor to render the diagram.</div>
       )}
-      <FloatingControls />
-      <StageBar />
-      <TraceBar />
+
       <ReactFlow
-        // Remount per document so the built-in fitView runs on the fresh node set.
         key={layoutVersion}
         fitView
-        fitViewOptions={fit}
+        fitViewOptions={FIT}
         nodes={shownNodes}
         edges={shownEdges}
         nodeTypes={nodeTypes}
@@ -388,6 +417,7 @@ export function Canvas() {
         onPaneClick={() => {
           select(null);
           setSelectedEdge(null);
+          setShortcutsOpen(false);
         }}
         onNodesChange={onNodesChange}
         onNodeDrag={onNodeDrag}
@@ -402,22 +432,77 @@ export function Canvas() {
         elementsSelectable
         minZoom={0.1}
         proOptions={{ hideAttribution: true }}
-        colorMode="dark"
+        colorMode={theme}
       >
-        <Background gap={24} size={1} color="#222733" />
-        <Controls showInteractive={false} />
-        {/* The canvas is narrow next to the editor; the minimap would cover the diagram. */}
-        {showMinimap && (
-          <MiniMap
-            position="top-right"
-            pannable
-            zoomable
-            nodeStrokeWidth={1.5}
-            nodeColor={(n) => (n.type === 'zone' ? '#1c212a' : '#2d3545')}
-            maskColor="rgba(13, 15, 18, 0.75)"
-          />
-        )}
+        <Background gap={24} size={1} color={theme === 'dark' ? '#262A33' : '#DCDAD2'} />
       </ReactFlow>
+
+      {/* Minimal Bottom-Right Canvas Controls: Zoom + / -, Fit View, and ? Shortcuts */}
+      <div className="canvas-corner-controls" role="toolbar" aria-label="Canvas navigation">
+        {shortcutsOpen && (
+          <div className="shortcuts-popover" role="dialog" aria-label="Keyboard shortcuts">
+            <div className="shortcuts-title">Keyboard Shortcuts</div>
+            <dl className="shortcuts-list">
+              <div className="shortcut-row">
+                <dt className="tabular">↑ / ↓</dt>
+                <dd>Step stages or trace hops</dd>
+              </div>
+              <div className="shortcut-row">
+                <dt className="tabular">[</dt>
+                <dd>Toggle left workbench</dd>
+              </div>
+              <div className="shortcut-row">
+                <dt className="tabular">⌘K</dt>
+                <dd>Switch architecture</dd>
+              </div>
+              <div className="shortcut-row">
+                <dt className="tabular">Esc</dt>
+                <dd>Close detail / stop trace</dd>
+              </div>
+            </dl>
+          </div>
+        )}
+
+        <div className="corner-control-group">
+          <button
+            type="button"
+            className="corner-btn"
+            onClick={() => zoomIn({ duration: 200 })}
+            title="Zoom in"
+            aria-label="Zoom in"
+          >
+            +
+          </button>
+          <button
+            type="button"
+            className="corner-btn"
+            onClick={() => zoomOut({ duration: 200 })}
+            title="Zoom out"
+            aria-label="Zoom out"
+          >
+            −
+          </button>
+          <button
+            type="button"
+            className="corner-btn"
+            onClick={() => fitView({ ...FIT, duration: 300 })}
+            title="Fit diagram to view"
+            aria-label="Fit view"
+          >
+            ⊡
+          </button>
+          <button
+            type="button"
+            className={`corner-btn${shortcutsOpen ? ' active' : ''}`}
+            onClick={() => setShortcutsOpen((o) => !o)}
+            title="Keyboard shortcuts"
+            aria-label="Keyboard shortcuts"
+            aria-expanded={shortcutsOpen}
+          >
+            ?
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

@@ -100,7 +100,8 @@ export class AuthController {
       );
       this.tokens.setSessionCookies(res, accessToken, refreshToken);
       res.redirect(`${origin}/`);
-    } catch {
+    } catch (err) {
+      console.error('Google OAuth callback failed:', err);
       res.redirect(`${origin}/?auth_error=oauth_failed`);
     }
   }

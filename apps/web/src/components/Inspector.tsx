@@ -170,16 +170,7 @@ export function Inspector() {
     <aside className="panel detail-card inspector" key={item.id}>
       <div className="panel-title">
         {node ? (
-          <span
-            className="glyph"
-            style={{
-              background: `${info?.color ?? '#64748b'}18`,
-              borderColor: `${info?.color ?? '#64748b'}36`,
-              color: info?.color,
-            }}
-          >
-            {info?.glyph}
-          </span>
+          <span className="glyph">{info?.glyph}</span>
         ) : (
           <span className="kind">{(item as Group).kind}</span>
         )}
